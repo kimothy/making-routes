@@ -10,6 +10,9 @@ except ImportError:
     # Backwards compatibility - importlib.metadata was added in Python 3.8
     import importlib_metadata
 
+from typing import Iterator, List
+from itertools import chain
+
 from PySide6 import QtCore
 from PySide6.QtCore import QAbstractTableModel
 from PySide6.QtCore import Qt
@@ -26,14 +29,30 @@ from PySide6.QtWidgets import QTableView
 from PySide6.QtWidgets import QToolBar
 from PySide6.QtWidgets import QFileDialog
 
-from many_more_routes.templates import load_template
-from many_more_routes.templates import assign_routes
-from many_more_routes.templates import make_route_table
-from many_more_routes.templates import make_departure_table
-from many_more_routes.templates import make_selection_table
-from many_more_routes.templates import make_customer_extension
-from many_more_routes.templates import make_customer_extension_extended
-from many_more_routes.outputs import export_many
+from many_more_routes.construct import MakeRoute
+from many_more_routes.construct import MakeDeparture
+from many_more_routes.construct import MakeSelection
+from many_more_routes.construct import MakeCustomerExtension
+from many_more_routes.construct import MakeCustomerExtensionExtended
+
+from many_more_routes.ducks import OutputRecord
+from many_more_routes.models import Template
+
+from many_more_routes.io import load_excel
+from many_more_routes.io import save_excel
+from many_more_routes.io import save_template
+
+from many_more_routes.sequence import generator
+from many_more_routes.sequence import is_sequenceNumber_valid
+
+
+def make_routes(record: Template) -> Iterator[OutputRecord]:
+    yield MakeRoute(record)
+    for departure in MakeDeparture(record): yield departure
+    yield MakeSelection(record)
+    for cugex in MakeCustomerExtension(record): yield cugex
+    for cugexex in MakeCustomerExtensionExtended(record): yield cugexex
+
 
 
 class PandasModel(QAbstractTableModel): 
@@ -183,7 +202,7 @@ class MakingRoutes(QMainWindow):
             self.setStatusTip(f'Loaded template {self.filename}')
 
 
-            table1 = PandasTable(load_template(self.filename))
+            table1 = PandasTable(pd.DataFrame(load_excel(self.filename)))
 
             self.addTab(table1, 'TEMPLATE_V3')
 
@@ -200,46 +219,58 @@ class MakingRoutes(QMainWindow):
             filename = dialog1.selectedFiles()[0]
             self.setStatusTip(f'Saved template {self.filename}')
 
-            for row in [df.get() for df in self.tables.values()]:
-                print(row)
 
-            export_many(
-                [df.get() for df in self.tables.values()],
-                self.tables.keys(),
-                filename
-            )
+            template1 = self.tables['TEMPLATE_V3'].get()
+            records = [item for row in template1.to_dict('records') for item in make_routes(Template(**row))]
+
+            save_excel(records, filename)
 
     def _assign_routes_cb(self):
         template1 = self.tables['TEMPLATE_V3'].get()
-        template1['Route'] = assign_routes(template1['Route'], overwrite=False)
+
+        seed = max(filter(is_sequenceNumber_valid, template1['ROUT']))
+
+        if seed:
+            routegen = generator(seed)
+            next(routegen)
+            template1['ROUT'] = template1['ROUT'].apply(lambda x: next(routegen) if not x else x)
 
         self.tables['TEMPLATE_V3'].update(template1)
 
 
     def _process_template_cb(self):
         template1 = self.tables['TEMPLATE_V3'].get()
-        outputs = [
-            template1,
-            make_route_table(template1),
-            make_departure_table(template1),
-            make_selection_table(template1),
-            make_customer_extension(template1),
-            make_customer_extension_extended(template1)
-        ]
 
-        sheetnames = [
-            'TEMPLATE_V3',
-            'API_DRS005MI_AddRoute',
-            'MPD_DRS006_Create_CL',
-            'MPD_DRS011_Create_CL',
-            'API_CUSEXTMI_AddFieldValue',
-            'API_CUSEXTMI_ChgFieldValueEx'              
-        ]
+        records = list(map(lambda x: Template(**x), template1.to_dict('records')))
+
+        routes:     List[OutputRecord] = []
+        departures: List[OutputRecord] = []
+        selection:  List[OutputRecord] = []
+        cugex:      List[OutputRecord] = []
+        cugexex:    List[OutputRecord] = []
+
+        for record in records:
+            routes.append(MakeRoute(record))
+        
+            for departure in MakeDeparture(record):
+                departures.append(departure)
+
+            selection.append(MakeSelection(record))
+
+            for cusex in MakeCustomerExtension(record):
+                cugex.append(cusex)
+
+            for cusexex in MakeCustomerExtensionExtended(record):
+                cugexex.append(cusexex)
 
         self.clearTabs()
 
+        outputs = [lst for lst in [records, routes, selection, cugex, cugexex] if lst != []]
+        sheetnames = [each[0]._api for each in outputs]
+
+
         for name, data in zip(sheetnames, outputs):
-            table0 = PandasTable(data)
+            table0 = PandasTable(pd.DataFrame([row.dict() for row in data]))
             self.tables.update({name: table0})
             self.addTab(table0, name)
 
