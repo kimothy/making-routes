@@ -1,0 +1,39 @@
+[tool.briefcase]
+project_name = "making-routes"
+bundle = "com.example.making-routes"
+version = "0.0.3"
+url = "https://making-routes.example.com/making-routes"
+license = "GNU General Public License v3 or later (GPLv3+)"
+author = 'Kim Timothy Engh'
+author_email = "kim@making-routes.example.com"
+
+[tool.briefcase.app.making-routes]
+formal_name = "making-routes"
+description = "Configure routes for M3"
+icon = "src/making_routes/resources/making-routes"
+sources = ['src/making_routes']
+requires = [
+    'pyside6>=6.3.0',
+    'getting-and-setting>=0.3.19',
+    'many-more-routes>=0.2.0'
+]
+
+
+[tool.briefcase.app.making-routes.macOS]
+requires = [
+    'std-nslog==1.0.0'
+]
+
+[tool.briefcase.app.making-routes.linux]
+requires = []
+system_requires = []
+
+[tool.briefcase.app.making-routes.windows]
+requires = []
+
+# Mobile deployments
+[tool.briefcase.app.making-routes.iOS]
+supported = false
+
+[tool.briefcase.app.making-routes.android]
+supported = false
