@@ -8,10 +8,9 @@ except ImportError:
     # Backwards compatibility - importlib.metadata was added in Python 3.8
     import importlib_metadata
 
-from typing import Iterator, List, Dict
+from typing import Iterator, List, Union, Dict
 
 from PySide6.QtGui import QAction
-from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMainWindow
@@ -21,14 +20,6 @@ from PySide6.QtWidgets import QToolBar
 from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QInputDialog
 from PySide6.QtWidgets import QMessageBox
-
-
-
-from many_more_routes.construct import MakeRoute
-from many_more_routes.construct import MakeDeparture
-from many_more_routes.construct import MakeSelection
-from many_more_routes.construct import MakeCustomerExtension
-from many_more_routes.construct import MakeCustomerExtensionExtended
 
 from many_more_routes.ducks import OutputRecord
 from many_more_routes.models import Template
@@ -41,28 +32,11 @@ from many_more_routes.sequence import generator
 from many_more_routes.sequence import increment
 from many_more_routes.sequence import is_sequenceNumber_valid
 
+from . procedures import MakeRouteConfiguration
+
 from making_routes.models import ErrorModel, OutputRecordView
 
 from pydantic.error_wrappers import ValidationError
-
-def make_errors(index, exception: ValidationError, record: OutputRecord) -> List[ErrorModel]:
-    for error in exception.errors():
-        return ErrorModel(
-            source=record._api,
-            row=index,
-            field=', '.join(error['loc']), 
-            message=error['msg'],
-            error=error['type'],
-            data=getattr(record, error['loc'][0]) if hasattr(record, error['loc'][0]) else ''
-        )
-
-
-def make_routes(record: Template) -> Iterator[OutputRecord]:
-    yield MakeRoute(record.copy())
-    for departure in MakeDeparture(record.copy()): yield departure
-    yield MakeSelection(record.copy())
-    for cugex in MakeCustomerExtension(record.copy()): yield cugex
-    for cugexex in MakeCustomerExtensionExtended(record.copy()): yield cugexex
 
 
 class MakingRoutes(QMainWindow):
@@ -165,7 +139,6 @@ class MakingRoutes(QMainWindow):
                     except ValidationError as exception:
                         record = Template.construct(**row)
                         for error in exception.errors():
-                            print(error)
                             error_record = ErrorModel(
                                 source='TEMPLATE_V3',
                                 row=index,
@@ -245,77 +218,36 @@ class MakingRoutes(QMainWindow):
 
     def _process_template_cb(self):
         self.clearTabs()
-        
         data = self.tables['TEMPLATE_V3'].get()
 
-        records:    List[OutputRecord] = []
-        routes:     List[OutputRecord] = []
-        departures: List[OutputRecord] = []
-        selection:  List[OutputRecord] = []
-        cugex:      List[OutputRecord] = []
-        cugexex:    List[OutputRecord] = []
-        errors:     List[ErrorModel] = []
+        working_list: List[OutputRecord] = []
 
         for index, row in enumerate(data):
-                try:
-                    record = Template(**row.dict())
-                    records.append(record)
+            for output in MakeRouteConfiguration(row):
+                if hasattr(output, 'row'):
+                    setattr(output, 'row', index)
 
-                except ValidationError as exception:
-                    record = Template.construct(**row.dict())
-                    records.append(record)
-                    errors.append(make_errors(index, exception, record))
+                working_list.append(output)
 
-                try:
-                    routes.append(MakeRoute(record.copy()))
+        working_dict: Dict[str, List[OutputRecord]] = {}
 
-                except ValidationError as exception:
-                    errors.append(make_errors(index, exception, record))
+        for record in working_list:
+            try:
+                working_dict[record._api].append(record)
+
+            except KeyError:
+                working_dict[record._api] = [record]
         
-                try:
-                    for departure in MakeDeparture(record.copy()):
-                        departures.append(departure)
-
-                except ValidationError as exception: 
-                    errors.append(make_errors(index, exception, record))
-
-                try:
-                    selection.append(MakeSelection(record.copy()))
-
-                except ValidationError as exception: 
-                    errors.append(make_errors(index, exception, record))
-                    
-                try:
-                    for cusex in MakeCustomerExtension(record.copy()):
-                        cugex.append(cusex)
-
-                except ValidationError as exception: 
-                    errors.append(make_errors(index, exception, record))
-
-                try:
-                    for cusexex in MakeCustomerExtensionExtended(record.copy()):
-                        cugexex.append(cusexex)
-
-                except ValidationError as exception:
-                    errors.append(make_errors(index, exception, record))
-
-
-
-        outputs = [lst for lst in [records, routes, departures, selection, cugex, cugexex] if lst != []]
-        sheetnames = [each[0]._api for each in outputs]
-
         self.tables = {}
-        for name, data in zip(sheetnames, outputs):
-            table0 = OutputRecordView(data)
-            self.tables.update({name: table0})
-            self.addTab(table0, name)
+        for key, value in working_dict.items():
+            table = OutputRecordView(value)
+            self.tables.update({key: table})
+            self.addTab(table, key)
 
-        if errors:
-            table1 = OutputRecordView(errors)
-            self.tables.update({'ERRORS': table1})
-            self.addTab(table1, 'ERRORS')
-            self.setStatusTip(f'Outputs updated. {len(errors)} errors!')
+        self.tables['TEMPLATE_V3'].toggle_editable()
 
+        if 'VALIDATION' in working_dict.keys():
+            self.setStatusTip(f'Outputs updated. {len(working_dict["VALIDATION"])} errors!')
         else:
             self.setStatusTip(f'Outputs updated. No errors!')
         self.show()

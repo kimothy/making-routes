@@ -13,8 +13,30 @@ from many_more_routes.ducks import OutputRecord
 
 from typing import Any, List, Dict, Optional
 from pydantic import BaseModel
+from pydantic import PrivateAttr
+
+
+class ProcedureException(RuntimeError):
+    """ A runtime error to be used when runtime exceptions happens in procedures """
+    def __init__(self, error, source: str, message: str, data: str):
+        self.source = source
+        self.message = message
+        self.data = data
+
+    def dict(self):
+        return {'source': self.source, 'message': self.message, 'data': self.data}
+
+
+class SimpleErrorModel(BaseModel):
+    """A data model that can be has the same signature as a Output Record.
+    This facilitets the use for the OutputRecordModel for error messages"""
+    _api: str = PrivateAttr(default='VALIDATION')
+    message: str
 
 class ErrorModel(BaseModel):
+    """A data model that can be has the same signature as a Output Record.
+    This facilitets the use for the OutputRecordModel for error messages"""
+    _api: str = PrivateAttr(default='VALIDATION') 
     source: Any
     row: Any
     field: Any
@@ -84,6 +106,14 @@ class OutputRecordModel(QAbstractTableModel):
 
         record = self._data[index.row()]
         setattr(record, self.headerData(index.column(), Qt.Horizontal), value)
+
+        try:
+            new_record = type(record)(**record.dict())
+            self._data[index.row()] = new_record
+        except:
+            new_record = type(record).construct(**record.dict())
+            self._data[index.row()] = new_record
+
         
         return True
 
@@ -103,9 +133,5 @@ class OutputRecordView(QTableView):
     def get(self) -> List[OutputRecord]:
         return self.model._data
 
-    def set(self, row: int, field: str) -> None:
-        col = list(self._schema['properties'].keys())[field]
-
-        self.model.headerData(index.column(), Qt.Horizontal)
-        headers = self.model.headerData(index.column(), Qt.Horizontal)
-
+    def toggle_editable(self):
+        self.model.editable = not self.model.editable
