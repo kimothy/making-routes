@@ -42,7 +42,6 @@ def yield_records(record: Template) -> OutputRecord:
     try:
         yield record
         for r in MakeRoute(record): yield r
-        for r in MakeRoute(record): yield r
         for r in MakeDeparture(record): yield r
         for r in MakeSelection(record): yield r
         for r in MakeCustomerExtension(record): yield r
