@@ -78,7 +78,10 @@ class OutputRecordModel(QAbstractTableModel):
         if not index.isValid():
             return None
 
-        return list(self._data[index.row()].dict().values())[index.column()]
+        try:
+            return getattr(self._data[index.row()], list(self._schema['properties'].keys())[index.column()])
+        except AttributeError:
+            return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if role != Qt.DisplayRole:

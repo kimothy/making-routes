@@ -163,8 +163,8 @@ class MakingRoutes(QMainWindow):
                 self.tables = {'TEMPLATE_V3': table1}
 
                 if errors:
-                    self.addTab(table2, 'WARNINGS')
-                    self.tables['WARNINGS'] = table2
+                    self.addTab(table2, 'VALIDATION')
+                    self.tables['VALIDATION'] = table2
 
 
     def _save_tables_cb(self):
@@ -209,8 +209,8 @@ class MakingRoutes(QMainWindow):
     
         counter = 0
         for record in template1:
-            if not record.ROUT:
-                record.ROUT = next(routegen)
+            if not getattr(record, 'ROUT', None): 
+                setattr(record, 'ROUT', next(routegen))
                 counter += 1
 
         self.setStatusTip(f'Assigned routes for {counter} records!')
