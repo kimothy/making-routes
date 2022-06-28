@@ -2,12 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import QAbstractTableModel, QModelIndex
 from PySide6.QtWidgets import QTableView
 
-from many_more_routes.models import Template
-from many_more_routes.models import Route
-from many_more_routes.models import Departure
-from many_more_routes.models import Selection
-from many_more_routes.models import CustomerExtension
-from many_more_routes.models import CustomerExtensionExtended
+
 from many_more_routes.ducks import OutputRecord
 
 
@@ -48,14 +43,15 @@ class ErrorModel(BaseModel):
 class OutputRecordModel(QAbstractTableModel):
     def __init__(self, data: List[OutputRecord], schema: dict = None, editable: bool = False, parent=None): 
         QAbstractTableModel.__init__(self, parent=parent)
+
         if schema:
             self._schema = schema
         else:
             try:
                 self._schema = data[0].schema()
             except:
-                self._schema = Template.schema()
-
+                self._schema = {'properties': {'': None}}
+        
         self._data = data.copy()
         self.editable = editable
 
@@ -121,6 +117,8 @@ class OutputRecordModel(QAbstractTableModel):
         return True
 
 
+    
+
 
 class OutputRecordView(QTableView):
     def __init__(self, data: List[OutputRecord], editable: bool = False):
@@ -130,9 +128,14 @@ class OutputRecordView(QTableView):
         
     def update(self, data: List[OutputRecord]) -> None:
         self.model = OutputRecordModel(data, editable=self.editable)
-
         self.setModel(self.model)
+        self.viewport().update()
 
+    def clear(self):
+        self.model = OutputRecordModel([], editable=self.editable, schema=self.model._schema)
+        self.setModel(self.model)
+        self.viewport().update()
+    
     def get(self) -> List[OutputRecord]:
         return self.model._data
 

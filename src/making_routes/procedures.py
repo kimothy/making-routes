@@ -1,9 +1,7 @@
-from . models import Template
-from . models import Route
-from . models import Departure
-from . models import Selection
-from . models import CustomerExtension
-from . models import CustomerExtensionExtended
+from many_more_routes.models import ValidatedTemplate
+from many_more_routes.models import UnvalidatedTemplate
+from many_more_routes.models import ValidatedTemplate
+
 from . models import ErrorModel
 
 from many_more_routes.ducks import OutputRecord
@@ -20,25 +18,15 @@ from pydantic.error_wrappers import ValidationError
 from typing import Iterable, List, Optional, Any
 
 
-class RouteConfiguration(BaseModel):
-    record: Optional[Template]
-    route: Optional[Route]
-    departures: Optional[List[Departure]]
-    selection: Optional[Selection]
-    cugex: Optional[List[CustomerExtension]] = []
-    cugexex: Optional[List[CustomerExtensionExtended]] = []
-    errors: Optional[List[Any]] = []
-
-
 class ExceptionOutput(BaseModel):
     _api: str = PrivateAttr(default='WARNINGS')
     row: Optional[int]
     error: Optional[str]
 
-def validate_record(record: OutputRecord) -> OutputRecord:
+def validate_record(record: ValidatedTemplate) -> OutputRecord:
         return type(record)(**record.dict())
 
-def yield_records(record: Template) -> OutputRecord:
+def yield_records(record: ValidatedTemplate) -> OutputRecord:
     try:
         yield record
         for r in MakeRoute(record): yield r
@@ -50,12 +38,17 @@ def yield_records(record: Template) -> OutputRecord:
         yield ErrorModel(source='yield_records', field='', message=str(exception))
 
 
-def MakeRouteConfiguration(record: Template) -> Iterable[OutputRecord]:
-    record = record.copy()
+def MakeRouteConfiguration(record: ValidatedTemplate) -> Iterable[OutputRecord]:
+    try:
+        record = ValidatedTemplate(**dict(record))
 
+    except ValidationError:
+        record = UnvalidatedTemplate(**dict(record))
+    
     for output in yield_records(record):
         try:
-            yield validate_record(output)
+            yield type(output)(**dict(output))
+            print(type(output))
 
         except ValidationError as exception:
             yield output
@@ -65,4 +58,3 @@ def MakeRouteConfiguration(record: Template) -> Iterable[OutputRecord]:
                     field=', '.join(e['loc']), 
                     message=str(e['msg']) + ' ' + str(e['type']) + str(getattr(record, e['loc'][0])) if hasattr(record, e['loc'][0]) else ''
                 )
-            

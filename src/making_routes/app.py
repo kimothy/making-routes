@@ -22,7 +22,9 @@ from PySide6.QtWidgets import QInputDialog
 from PySide6.QtWidgets import QMessageBox
 
 from many_more_routes.ducks import OutputRecord
-from many_more_routes.models import Template
+from many_more_routes.models import UnvalidatedTemplate
+from many_more_routes.models import ValidatedTemplate
+
 
 from many_more_routes.io import load_excel
 from many_more_routes.io import save_excel
@@ -36,8 +38,12 @@ from . procedures import MakeRouteConfiguration
 
 from making_routes.models import ErrorModel, OutputRecordView
 
+
 from pydantic.error_wrappers import ValidationError
 
+
+# https://stackoverflow.com/questions/67699451/make-every-fields-as-optional-with-pydantic
+# on how to solve partially constructed objects.
 
 class MakingRoutes(QMainWindow):
     def __init__(self):
@@ -74,6 +80,7 @@ class MakingRoutes(QMainWindow):
         action3 = QAction("Assign Routes", self)
         action4 = QAction("Update Outputs", self)
         action5 = QAction("New template", self)
+        action6 = QAction("Validate", self)
 
         action1.setIcon(icon1)
         action2.setIcon(icon2)
@@ -84,6 +91,7 @@ class MakingRoutes(QMainWindow):
         action3.triggered.connect(self._assign_routes_cb)
         action4.triggered.connect(self._process_template_cb)
         action5.triggered.connect(self._new_template_cb)
+        action6.triggered.connect(self._validate_template_cb)
 
 
         toolbar1.addAction(action5)
@@ -91,6 +99,7 @@ class MakingRoutes(QMainWindow):
         toolbar1.addAction(action2)
         toolbar1.addSeparator()
         toolbar1.addAction(action3)
+        toolbar1.addAction(action6)
         toolbar1.addAction(action4)
 
         self.addToolBar(toolbar1)
@@ -107,13 +116,14 @@ class MakingRoutes(QMainWindow):
 
         self.addTab = tabs1.addTab
         self.clearTabs = tabs1.clear
+        self.removeTab = tabs1.removeTab
 
     def _new_template_cb(self):
         self.clearTabs()
 
         self.setStatusTip(f'New template {self.filename}')
 
-        data = []
+        data = [ValidatedTemplate]
         table1 = OutputRecordView(data)
 
         self.addTab(table1, 'TEMPLATE_V3')
@@ -128,43 +138,76 @@ class MakingRoutes(QMainWindow):
         if dialog1.selectedFiles():
             self.filename = dialog1.selectedFiles()[0]
             
-            data: List[Template] = []
-            errors: List[ErrorModel] = []
+            data: List[ValidatedTemplate] = []
     
             try:
-                for index, row in enumerate(load_excel(self.filename, 'TEMPLATE_V3')):
+                for record in load_excel(self.filename, 'TEMPLATE_V3'):
                     try:
-                        data.append(Template(**row))
+                        data.append(ValidatedTemplate(**record))
         
-                    except ValidationError as exception:
-                        record = Template.construct(**row)
-                        for error in exception.errors():
-                            error_record = ErrorModel(
-                                source='TEMPLATE_V3',
-                                row=index,
-                                field=', '.join(error['loc']), 
-                                message=error['msg'],
-                                error=error['type'],
-                                data=getattr(record, error['loc'][0]) if hasattr(record, error['loc'][0]) else ''
-                            )
-                            
-                            errors.append(error_record)
-                        data.append(record)
+                    except ValidationError:
+                        data.append(UnvalidatedTemplate(**record))
+
 
             except KeyError as error:
                 QMessageBox.critical(self, 'Error', str(error))
 
             else:
                 table1 = OutputRecordView(data, editable=True)
-                table2 = OutputRecordView(errors)
                 self.setStatusTip(f'Loaded template {self.filename}')
                 self.clearTabs()
                 self.addTab(table1, 'TEMPLATE_V3')
                 self.tables = {'TEMPLATE_V3': table1}
 
-                if errors:
+
+    def _validate_template_cb(self):
+        template1 = self.tables['TEMPLATE_V3'].get()
+
+        errors: List[OutputRecord] = []
+
+        try:
+            for index, record in enumerate(template1):
+                try:
+                    ValidatedTemplate(**dict(record))
+        
+                except ValidationError as exception:
+                    for error in exception.errors():
+                        error_record = ErrorModel(
+                            source='TEMPLATE_V3',
+                            row=index,
+                            field=', '.join(error['loc']), 
+                            message=error['msg'],
+                            error=error['type'],
+                            data=getattr(record, error['loc'][0]) if hasattr(record, error['loc'][0]) else ''
+                    )
+                            
+                    errors.append(error_record)
+
+        except KeyError as error:
+            QMessageBox.critical(self, 'Error', str(error))
+
+        else:
+            if errors:
+                try:
+                    self.tables['VALIDATION'].clear()
+                    self.tables['VALIDATION'].update(errors)
+
+                except KeyError:
+                    table2 = OutputRecordView(errors)
                     self.addTab(table2, 'VALIDATION')
                     self.tables['VALIDATION'] = table2
+
+            else:
+                try:
+                    self.tables.pop('VALIDATION')
+
+                except KeyError:
+                    pass
+                    
+                
+            self.setStatusTip(f'Validation performed,  {len(errors)} errors')
+            self.refresh()
+                
 
 
     def _save_tables_cb(self):
@@ -182,7 +225,8 @@ class MakingRoutes(QMainWindow):
             if not records == []:
                 save_excel(records, filename)
             else:
-                save_template(Template, filename)
+                save_template(ValidatedTemplate, filename)
+
 
     def _assign_routes_cb(self):
         template1 = self.tables['TEMPLATE_V3'].get()
@@ -202,18 +246,22 @@ class MakingRoutes(QMainWindow):
         
         elif not is_sequenceNumber_valid(text):
             self.setStatusTip(f'{text} is not a valid seed!')
+            return None
 
         else:
             self.setStatusTip(f'Cancelled assignment of routes')
             return None
     
         counter = 0
-        for record in template1:
-            if not getattr(record, 'ROUT', None): 
+        for index, record in enumerate(template1):
+            if not getattr(record, 'ROUT', None):
                 setattr(record, 'ROUT', next(routegen))
+                self.tables['TEMPLATE_V3'].model._data[index] = record
                 counter += 1
 
         self.setStatusTip(f'Assigned routes for {counter} records!')
+
+        
 
 
     def _process_template_cb(self):
@@ -252,6 +300,18 @@ class MakingRoutes(QMainWindow):
             self.setStatusTip(f'Outputs updated. No errors!')
         self.show()
 
+
+    def refresh(self):
+        tables = self.tables.copy()
+
+        self.clearTabs()
+        self.tables = {}
+        for key, value in tables.items():
+            table = OutputRecordView(value.model._data.copy())
+            self.tables.update({key: table})
+            self.addTab(table, key)
+
+        self.tables['TEMPLATE_V3'].toggle_editable()
 
 def main():
     app_module = sys.modules['__main__'].__package__
