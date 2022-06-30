@@ -8,7 +8,7 @@ except ImportError:
     # Backwards compatibility - importlib.metadata was added in Python 3.8
     import importlib_metadata
 
-from typing import Iterator, List, Union, Dict
+from typing import List, Dict
 
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QStyle
