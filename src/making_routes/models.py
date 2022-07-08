@@ -2,42 +2,25 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import QAbstractTableModel, QModelIndex
 from PySide6.QtWidgets import QTableView
 
-
 from many_more_routes.ducks import OutputRecord
-
 
 from typing import Any, List, Dict, Optional
 from pydantic import BaseModel
 from pydantic import PrivateAttr
 
 
-class ProcedureException(RuntimeError):
-    """ A runtime error to be used when runtime exceptions happens in procedures """
-    def __init__(self, error, source: str, message: str, data: str):
-        self.source = source
-        self.message = message
-        self.data = data
-
-    def dict(self):
-        return {'source': self.source, 'message': self.message, 'data': self.data}
-
-
 class SimpleErrorModel(BaseModel):
     """A data model that can be has the same signature as a Output Record.
     This facilitets the use for the OutputRecordModel for error messages"""
-    _api: str = PrivateAttr(default='VALIDATION')
+    _api: str = PrivateAttr(default='PROCESSING_ERROR')
     message: str
 
-class ErrorModel(BaseModel):
+class SimpleValidationModel(BaseModel):
     """A data model that can be has the same signature as a Output Record.
     This facilitets the use for the OutputRecordModel for error messages"""
-    _api: str = PrivateAttr(default='VALIDATION') 
-    source: Any
-    row: Any
-    field: Any
-    message: Any
-    error: Any
-    data: Any
+    _api: str = PrivateAttr(default='VALIDATION_ERROR')
+    message: str
+
 
 
 class OutputRecordModel(QAbstractTableModel):
@@ -117,17 +100,26 @@ class OutputRecordModel(QAbstractTableModel):
         return True
 
 
-    
-
-
 class OutputRecordView(QTableView):
     def __init__(self, data: List[OutputRecord], editable: bool = False):
         super().__init__()
+        self.record_type = data[0]._api
         self.editable = editable
-        self.update(data)
+        self.load(data)
         
-    def update(self, data: List[OutputRecord]) -> None:
+    def load(self, data: List[OutputRecord]) -> None:
         self.model = OutputRecordModel(data, editable=self.editable)
+        self.setModel(self.model)
+        self.viewport().update()
+
+    def update(self, index: int, data: OutputRecord) -> None:
+        self.model._data[index] = data
+        self.viewport().update()
+
+    def append(self, data: OutputRecord) -> None:
+        _data = self.model._data.copy()
+        _data.append(data)
+        self.model = OutputRecordModel(_data, editable=self.editable)
         self.setModel(self.model)
         self.viewport().update()
 
@@ -135,6 +127,9 @@ class OutputRecordView(QTableView):
         self.model = OutputRecordModel([], editable=self.editable, schema=self.model._schema)
         self.setModel(self.model)
         self.viewport().update()
+
+    def list(self) -> List[OutputRecord]:
+        return self.model._data.copy()
     
     def get(self) -> List[OutputRecord]:
         return self.model._data

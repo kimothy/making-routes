@@ -14,9 +14,9 @@ icon = "src/making_routes/resources/making-routes"
 sources = ['src/making_routes']
 requires = [
     'pyside6>=6.3.0',
-    'many-more-routes>=0.3.2'
+    'many-more-routes>=0.4.0',
+    'route-sequence>=0.0.1'
 ]
-
 
 [tool.briefcase.app.making-routes.macOS]
 requires = [
