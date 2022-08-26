@@ -91,12 +91,12 @@ MakeCustomerExtensionExtendedPlugin = make_plugin_factory(MakeCustomerExtensionE
 class ValidatePlugin(Plugin):
     enabled = True
 
-    def buttons(self) -> List[buttons]:
+    def buttons(self) -> List[Button]:
         return [Button('Validate', self.main)]
 
     def main(self) -> None:
         try:
-            for record in self.interface.list_all_records():
+            for n, record in self.interface.list_all_records():
                 try:
                     type(record)(**record.dict())
 
@@ -104,12 +104,9 @@ class ValidatePlugin(Plugin):
                     for error in exception.errors():
                         self.interface.append_record(
                             SimpleValidationModel(
-                                message=f"[{record._api}]   {error['loc'][0]} = {getattr(record, error['loc'][0], None)}   {error['msg']}"
+                                message=f"[{record._api}] (Line {n})   {error['loc'][0]} = {getattr(record, error['loc'][0], None)}   {error['msg']}"
                             )
                         )
 
         except Exception as exception:
             self.interface.prompt_error(str(exception))
-            
-
-        

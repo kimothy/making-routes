@@ -1,11 +1,11 @@
 [tool.briefcase]
 project_name = "making-routes"
 bundle = "com.example.making-routes"
-version = "0.0.3"
+version = "0.0.5"
 url = "https://making-routes.example.com/making-routes"
 license = "GNU General Public License v3 or later (GPLv3+)"
 author = 'Kim Timothy Engh'
-author_email = "kim@making-routes.example.com"
+author_email = "kim.timothy.engh@epiroc.com"
 
 [tool.briefcase.app.making-routes]
 formal_name = "making-routes"

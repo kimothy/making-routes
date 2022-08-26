@@ -113,8 +113,8 @@ class PluginInterface(PluginInterfaceBase):
     def list_plugins(self) -> List[Plugin]:
         return list(self.__plugins)
 
-    def list_all_records(self) -> List[OutputRecord]:
-        return [record for key in self.mvc.views.keys() for record in self.list_records(key)]
+    def list_all_records(self):
+        return [(n, record) for key in self.mvc.views.keys() for n, record in enumerate(self.list_records(key))]
 
     def trigger(self, event: Literal[
         'ON_LOAD',
